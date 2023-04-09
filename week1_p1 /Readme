@@ -1,0 +1,4 @@
+Directions to Run:
+###
+make
+./test.out < sample_miniC.c
