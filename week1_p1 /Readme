@@ -1,4 +1,8 @@
-Directions to Run:
-###
+## Directions:
+
+To run this parser:
+
+```
 make
 ./test.out < sample_miniC.c
+```

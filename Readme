@@ -1,0 +1,43 @@
+# COSC 257 Assignments
+
+This repository was created for the COSC 257 course. The course has eight assignments, as follows:
+
+## week1_p1
+
+Your submission for this assignment must include the following:
+
+- Makefile to run the final program from given lex and yacc files.
+- A complete lexical (lex file) analyzer for a miniC program.
+- A partial parser (yacc file) for miniC program that has rules for parsing the following miniC statements:
+  - Variable declarations
+  - Assignment statements
+  - Return statements
+  - If, if-else statements (Note: some if statements will not have an associated else statement)
+
+## week2_p2
+
+...
+
+## week1_p2
+
+...
+
+## week2_p2
+
+...
+
+## week1_p3
+
+...
+
+## week2_p2
+
+...
+
+## week1_p4
+
+...
+
+## week2_p4
+
+...
