@@ -1,119 +1,96 @@
-%token SPECIFIER MODIFIER TYPE CONDITION FUNCTION COMMENT FNAME EXT OPERATOR TAB END NUMBER QUOTE RETURN
-%token LPAREN RPAREN LBRACK RBRACK WSP
-
 %{
-#include <stdio.h>
-void yyerror(const char *);
+#include<stdio.h>
+#include<stdlib.h>
+#include"y.tab.h"
 extern int yylex();
 extern int yylex_destroy();
 extern FILE *yyin;
 extern int yylineno;
 extern char* yytext;
+extern void yyerror(const char *);
 %}
 
-%start RULELIST
+/* Terminals */
+%token <val_i> NUMBER
+%token <val_s> NAME
+%token READ PRINT IF ELSE WHILE RETURN
+%token LPAREN RPAREN LBRACE RBRACE SEMICOLON COMMA
+%token ASSIGN PLUS MINUS UMINUS TIMES DIVIDE LT GT LEQ GEQ EQ
+%token EXTERN VOID INTEGER
+
+%left PLUS MINUS
+%left TIMES DIVIDE
+%nonassoc UMINUS
+
+/* Union for Token Values */
+%union {
+    int val_i;
+    char* val_s;
+}
+
 %%
 /* The miniC Grammar */
-RULELIST:
-	WSPS
-	| RULES WSPS
-	| RULELIST RULES WSPS
-	;
+/* Non-terminals for variable declarations */
+var_decl: type_specifier identifier SEMICOLON
+        | type_specifier identifier ASSIGN expression SEMICOLON
+        ;
 
-RULES:
-	COMMENT
-	| STATEMENTS
-	| CONDITIONS
-	| RETURNS
-	;
+type_specifier: INTEGER
+              | VOID
+              ;
 
-// EXAMPLE: func(int a){}
-// print(loc1)
-FUNCTIONS:
-	TYPES FNAME LPAREN DECLARATION RPAREN FUNCTIONSS
-	;
+identifier: NAME
+          ;
 
-FUNCTIONSS:
-	/* empty */
-	| LBRACK /* empty */ RBRACK
-	| LBRACK RULELIST RBRACK
-	;
+/* Non-terminal for assignment statements */
+assignment: identifier ASSIGN expression SEMICOLON
+          ;
 
-// EXAMPLE: if (loc1 > loc2) {}
-// else {}
-// while (i < loc1){}
-CONDITIONS:
-	CONDITION CONDITIONSS LBRACK /* empty */ RBRACK
-	| CONDITION CONDITIONSS LBRACK RULELIST RBRACK
-	;
+/* Non-terminal for return statements */
+return_stmt: RETURN expression SEMICOLON
+           | RETURN SEMICOLON
+           ;
 
-CONDITIONSS:
-	/* empty */
-	| WSPS LPAREN WSPS FNAME WSPS OPERATORS WSPS RPAREN WSPS
-	;
+/* Non-terminals for if or if-else statements */
+if_stmt: IF LPAREN expression RPAREN statement
+       | IF LPAREN expression RPAREN statement ELSE statement
+       ;
 
-WSPS:
-	/* empty */
-	| WSP
-	;
+/* Non-terminal for while loop statement */
+while_stmt: WHILE LPAREN expression RPAREN statement
+           ;
 
-// RETURN
-RETURNS:
-	RETURN LPAREN RETURNSS
-	;
+/* Non-terminal for print statement */
+print_stmt: PRINT LPAREN expression RPAREN SEMICOLON
+           ;
 
-RETURNSS:
-	ASSIGNMENT RPAREN END
-	| NUMBER RPAREN END
-	;
+/* Non-terminal for read statement */
+read_stmt: READ LPAREN RPAREN SEMICOLON
+          ;
 
-// EXAMPLE: extern void int loc1 = a + 10;
-STATEMENTS:
-	SPECIFIERS MODIFIERS STATEMENTSS
-	;
+expression: NUMBER
+          | NAME
+          | expression PLUS expression
+          | expression MINUS expression
+          | expression TIMES expression
+          | expression DIVIDE expression
+          | expression LT expression
+          | expression GT expression
+          | expression LEQ expression
+          | expression GEQ expression
+          | expression EQ expression
+          | LPAREN expression RPAREN
+          | MINUS expression %prec UMINUS
+          ;
 
-STATEMENTSS:
-	DECLARATION END
-	| FUNCTIONS
-	| FUNCTIONS END
-	;
-
-DECLARATION:
-	/* empty */
-	| TYPES ASSIGNMENT
-	;
-
-ASSIGNMENT:
-	FNAME
-	| FNAME OPERATORS
-	;
-
-/* Zero or More */
-SPECIFIERS:
-	/* empty */
-	| SPECIFIERS SPECIFIER
-	;
-
-MODIFIERS:
-	/* empty */
-	| MODIFIERS MODIFIER
-	;
-
-/* One or More */
-OPERATORS:
-	OPERATOR NUMBER
-	| OPERATOR FNAME
-	| OPERATOR QUOTE FNAME QUOTE
-	| OPERATORS OPERATOR NUMBER
-	| OPERATORS OPERATOR FNAME
-	| OPERATORS OPERATOR QUOTE FNAME QUOTE
-	;
-
-/* Zero or One */
-TYPES:
-	/* empty */
-	| TYPE
-	;
+statement: var_decl
+         | assignment
+         | return_stmt
+         | if_stmt
+         | while_stmt
+         | print_stmt
+         | read_stmt
+         ;
 
 %%
 
@@ -131,7 +108,6 @@ int main(int argc, char** argv){
 	
 	return 0;
 }
-
 
 void yyerror(const char *error_msg){
 	fprintf(stdout, "<-\n%s at line %d\n", error_msg, yylineno);
