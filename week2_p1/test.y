@@ -136,6 +136,13 @@ int main(int argc, char** argv) {
 
     yylex_destroy();
     
+    /*
+    if (!check_variable_usage(root)) {
+        printf("Semantic analysis failed.\n");
+        return 1;
+    }
+    printf("Semantic analysis successful.\n");
+    */
     return 0;
 }
 
