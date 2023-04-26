@@ -2,7 +2,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include"y.tab.h"
-#include"check_variable_usage.c"
+//#include"check_variable_usage.c"
 extern int yylex();
 extern int yylex_destroy();
 extern FILE *yyin;
@@ -11,7 +11,7 @@ extern char* yytext;
 extern void yyerror(const char *);
 
 /* Global variable to hold root node of AST */
-Node* root = NULL;
+//astNode* root = NULL;
 %}
 
 /* Terminals */
@@ -32,12 +32,17 @@ Node* root = NULL;
     char* val_s;
 }
 
+/*
+%type<val_i> expression
+%type<val_s> type_specifier identifier
+*/
+
 %start file
 
 %%
 /* The miniC Grammar */
 /* Non-terminals for variable declarations */
-file: program { $$ = root }
+file: program //{ $$ = root }
         | file program
         ;
 
@@ -50,11 +55,11 @@ var_decl: type_specifier identifier SEMICOLON
         | type_specifier identifier ASSIGN expression SEMICOLON
         ;
 
-type_specifier: INTEGER { $$ = $1 }
-              | VOID { $$ = $1 }
+type_specifier: INTEGER //{ $$ = $1 }
+              | VOID //{ $$ = $1 }
               ;
 
-identifier: NAME { $$ = $1 }
+identifier: NAME //{ $$ = $1 }
           ;
 
 /* Non-terminal for assignment statements */
@@ -84,23 +89,23 @@ print_stmt: PRINT expression SEMICOLON
 read_stmt: READ LPAREN RPAREN SEMICOLON
           ;
 
-expression: NUMBER { $$ = $1 }
-          | NAME { $$ = $1 }
-          | expression PLUS expression { $$ = $1 + $3}
-          | expression MINUS expression { $$ = $1 - $3}
-          | expression TIMES expression { $$ = $1 * $3}
-          | expression DIVIDE expression { $$ = $1 / $3}
-          | expression LT expression { $$ = ($1 < $3) ? 1 : 0 }
-          | expression GT expression { $$ = ($1 > $3) ? 1 : 0 }
-          | expression LEQ expression { $$ = ($1 <= $3) ? 1 : 0 }
-          | expression GEQ expression { $$ = ($1 >= $3) ? 1 : 0 }
-          | expression EQ expression { $$ = ($1 == $3) ? 1 : 0 }
-          | LPAREN expression RPAREN { $$ = $2 }
-          | MINUS expression %prec UMINUS { $$ = -$2 }
+expression: NUMBER //{ $$ = $1 }
+          | identifier
+          | expression PLUS expression //{ $$ = $1 + $3}
+          | expression MINUS expression //{ $$ = $1 - $3}
+          | expression TIMES expression //{ $$ = $1 * $3}
+          | expression DIVIDE expression //{ $$ = $1 / $3}
+          | expression LT expression //{ $$ = ($1 < $3) ? 1 : 0 }
+          | expression GT expression //{ $$ = ($1 > $3) ? 1 : 0 }
+          | expression LEQ expression //{ $$ = ($1 <= $3) ? 1 : 0 }
+          | expression GEQ expression //{ $$ = ($1 >= $3) ? 1 : 0 }
+          | expression EQ expression //{ $$ = ($1 == $3) ? 1 : 0 }
+          | LPAREN expression RPAREN //{ $$ = $2 }
+          | MINUS expression %prec UMINUS //{ $$ = -$2 }
           ;
 
-block_statement: statement { $$ = $1 }
-        | LBRACE statement_list RBRACE { $$ = $2 }
+block_statement: statement
+        | LBRACE statement_list RBRACE
         ;
 
 statement: var_decl
@@ -131,13 +136,14 @@ int main(int argc, char** argv) {
     }
 
     yylex_destroy();
-
+    /*
     if (!check_variable_usage(root)) {
         printf("Semantic analysis failed.\n");
         return 1;
     }
 
     printf("Semantic analysis successful.\n");
+    */
     return 0;
 }
 
