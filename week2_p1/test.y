@@ -1,152 +1,158 @@
 %{
-#include<stdio.h>
-#include<stdlib.h>
-#include"y.tab.h"
-#include "ast.h"
-//#include"check_variable_usage.c"
-extern int yylex();
-extern int yylex_destroy();
-extern FILE *yyin;
-extern int yylineno;
-extern char* yytext;
-extern void yyerror(const char *);
+	#include <stdio.h>
+	#include "ast.h"
 
-/* Global variable to hold root node of AST */
-//astNode* root = NULL;
+	#include <string>
+	#include <unordered_set>
+	using namespace std;
+
+	extern int yylex();
+	extern int yylex_destroy();
+	extern int yywrap();
+	void yyerror(const char *);
+	extern FILE *yyin;
+
+	// Define the symbol table as a global variable
+	unordered_set<string> symbol_table;
+
+	// Helper function to check if a variable is declared
+	void check_declaration(string var_name) {
+		if (symbol_table.find(var_name) == symbol_table.end()) {
+			fprintf(stderr, "Error: variable %s is used before declaration\n", var_name.c_str());
+			exit(1);
+		}
+	}
+
+	// Function to perform semantic analysis
+	void perform_semantic_analysis(astNode* root) {
+		// Traverse the AST and populate the symbol table
+		for (auto child : root->children) {
+			if (child->type == var_node) {
+				symbol_table.insert(child->var.name);
+			} else if (child->type == func_node) {
+				symbol_table.insert(child->func.name);
+			}
+		}
+
+		// Check if every variable is declared before use
+		for (auto child : root->children) {
+			if (child->type == asgn_node) {
+				check_declaration(child->asgn.lhs->var.name);
+			} else if (child->type == bin_expr_node) {
+				check_declaration(child->bin_expr.lhs->var.name);
+				check_declaration(child->bin_expr.rhs->var.name);
+			} else if (child->type == ret_node) {
+				check_declaration(child->ret.expr->var.name);
+			} else if (child->type == call_node) {
+				if (child->call.param != nullptr) {
+					check_declaration(child->call.param->var.name);
+				}
+			} else if (child->type == decl_node) {
+				if (symbol_table.find(child->decl.name) != symbol_table.end()) {
+					fprintf(stderr, "Error: variable %s is already declared\n", child->decl.name);
+					exit(1);
+				} else {
+					symbol_table.insert(child->decl.name);
+				}
+			}
+		}
+	}
 %}
 
 /* Union for Token Values */
 %union {
-    int val_i;
-    char* val_s;
-    astNode *nptr;
-    vector<astNode *> *svec_ptr;
+	int val_i;
+	char* val_s;
+	astNode *nptr;
+	vector<astNode *> *svec_ptr;
 }
 
 /* Terminals */
 %token <val_i> NUMBER
 %token <val_s> NAME
-%token READ PRINT IF ELSE WHILE RETURN LPAREN RPAREN LBRACE RBRACE SEMICOLON COMMA ASSIGN PLUS MINUS UMINUS TIMES DIVIDE LT GT LEQ GEQ EQ EXTERN VOID INTEGER
+%token READ PRINT IF ELSE WHILE RETURN LT GT LEQ GEQ EQ VOID INTEGER
 
-%left PLUS MINUS
-%left TIMES DIVIDE
-%nonassoc UMINUS
+/* Non-Terminals */
+%type <nptr> expression term
+%type <nptr> declaration_list
 
-/*
-%type<val_i> expression
-%type<val_s> type_specifier identifier
-*/
+%start expression
 
-%start file
-
+/* The Mini-C Grammar */
 %%
-/* The miniC Grammar */
-/* Non-terminals for variable declarations */
-file: program {$$ = createProg($1); printNode($$);} 
-        | file program {$$ = createProg($2); printNode($$);} 
-        ;
+declaration_list:
+  declaration_list NAME ';' {symbol_table.insert($2);}
+  | NAME ';' {symbol_table.insert($1);}
+  | expression {
+	$$ = createAsgn(tnptr, $1);
+  }
+  ;
 
-program: INTEGER NAME LPAREN type_specifier identifier RPAREN block_statement {$$ = createFunc($2, $5, $7);}
-        | EXTERN VOID PRINT LPAREN INTEGER RPAREN SEMICOLON // astNode* ext1; /* extern function print */
-        | EXTERN INTEGER read_stmt  // astNode* ext2; /* extern function read */
-        ;
+expression:
+	term '+' term {
+		// Check if variables are declared before use
+		check_declaration($1->var.name);
+		check_declaration($3->var.name);
+		$$ = createBExpr($1, $3, add);
+	}
+	| term '-' term {
+		// Check if variables are declared before use
+		check_declaration($1->var.name);
+		check_declaration($3->var.name);
+		$$ = createBExpr($1, $3, sub);
+	}
+	| term '*' term {
+		// Check if variables are declared before use
+		check_declaration($1->var.name);
+		check_declaration($3->var.name);
+		$$ = createBExpr($1, $3, mul);
+	}
+	| term '/' term {
+		// Check if variables are declared before use
+		check_declaration($1->var.name);
+		check_declaration($3->var.name);
+		$$ = createBExpr($1, $3, divide);
+	}
 
-var_decl: type_specifier identifier SEMICOLON {$$ = createVar($2);}
-        | type_specifier identifier ASSIGN expression SEMICOLON {$$ = createAsgn($2, $4);}
-        ;
+	| term {
+		// Check if variable is declared before use
+		check_declaration($1->var.name);
+		$$ = $1;
+	}
+	;
 
-type_specifier: INTEGER //{ $$ = $1 }
-              | VOID //{ $$ = $1 }
-              ;
-
-identifier: NAME {$$ = createVar($1);}
-          ;
-
-/* Non-terminal for assignment statements */
-assignment: identifier ASSIGN expression SEMICOLON {$$ = createAsgn($1, $3);} 
-            | identifier ASSIGN read_stmt {$$ = createAsgn($1, $3);} 
-          ;
-
-/* Non-terminal for return statements */
-return_stmt: RETURN expression SEMICOLON {$$ = createRet($2);}
-           ;
-
-/* Non-terminals for if or if-else statements */
-if_stmt: IF expression block_statement {$$ = createIf($2, $3, NULL);}
-       | IF expression block_statement ELSE block_statement {$$ = createIf($2, $3, $5);}
-       ;
-
-/* Non-terminal for while loop statement */
-while_stmt: WHILE expression block_statement {$$ = createWhile($2, $3);}
-           ;
-
-/* Non-terminal for print statement */
-print_stmt: PRINT expression SEMICOLON // astNode* ext1; /* extern function print */
-           ;
-
-/* Non-terminal for read statement */
-read_stmt: READ LPAREN RPAREN SEMICOLON // astNode* ext2; /* extern function read */
-          ;
-
-expression: NUMBER {$$ = createCnst($1);}
-          | identifier {$$ = createVar($1);}
-          | expression PLUS expression {$$ = createBExpr($1, $3, add);}
-          | expression MINUS expression {$$ = createBExpr($1, $3, sub);}
-          | expression TIMES expression {$$ = createBExpr($1, $3, mul);}
-          | expression DIVIDE expression {$$ = createBExpr($1, $3, divide);}
-          | expression LT expression {$$ = createRExpr($1, $3, lt);}
-          | expression GT expression {$$ = createRExpr($1, $3, gt);}
-          | expression LEQ expression {$$ = createRExpr($1, $3, le);}
-          | expression GEQ expression {$$ = createRExpr($1, $3, ge);}
-          | expression EQ expression {$$ = createRExpr($1, $3, eq);}
-          | LPAREN expression RPAREN { $$ = $2 }
-          | MINUS expression %prec UMINUS { $$ = createUExpr($2, uminus);}
-          ;
-
-block_statement: statement {$$ = createBlock($1); printNode($$);}
-        | LBRACE statement_list RBRACE {$$ = createBlock($2); printNode($$);}
-        ;
-
-statement: var_decl // { $$ = $1 }
-         | assignment // { $$ = $1 }
-         | return_stmt // { $$ = $1 }
-         | if_stmt // { $$ = $1 }
-         | while_stmt // { $$ = $1 }
-         | print_stmt // { $$ = $1 }
-         | read_stmt // { $$ = $1 }
-         ;
-
-statement_list:
-        statement {$$ = new vector<astNode*> (); $$->push_back($1);}
-        | statement_list statement {$$ = $1; $$->push_back($2);}
-        ;
+term:
+	NUMBER {
+		$$ = createCnst($1);
+	}
+	| NAME {
+		// Check if variable is declared before use
+		check_declaration($1);
+		$$ = createVar($1);
+	}
+	| '-' term {
+		$$ = createUExpr($2, uminus);
+	}
+	;
 
 %%
 
-int main(int argc, char** argv) {
-    if (argc == 2) {
-        yyin = fopen(argv[1], "r");
-    }
+int main(int argc, char** argv){
+	if (argc == 2){
+  	yyin = fopen(argv[1], "r");
+	}
+	yyparse();
+	
+	if (yyin != stdin)
+		fclose(yyin);
+	
+	yylex_destroy();
 
-    yyparse();
-
-    if (yyin != stdin) {
-        fclose(yyin);
-    }
-
-    yylex_destroy();
-    
-    /*
-    if (!check_variable_usage(root)) {
-        printf("Semantic analysis failed.\n");
-        return 1;
-    }
-    printf("Semantic analysis successful.\n");
-    */
-    return 0;
+	perform_semantic_analysis(root);
+	
+	return 0;
 }
 
-
-void yyerror(const char *error_msg){
-	fprintf(stdout, "<-\n%s at line %d\n", error_msg, yylineno);
+void yyerror(const char *){
+	fprintf(stderr, "Syntax error\n");
 }
