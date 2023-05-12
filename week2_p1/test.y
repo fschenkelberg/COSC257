@@ -1,122 +1,97 @@
 %{
-	#include <stdio.h>
-	#include "ast.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include "ast.h"
+#include <string.h>
+#include <unordered_set>
+extern int yylex();
+extern int yylex_destroy();
+extern int yywrap();
+void yyerror(const char *);
+extern FILE *yyin;
+extern int yylineno;
 
-	#include <string>
-	#include <unordered_set>
-	using namespace std;
+#define TABLE_SIZE 100
 
-	extern int yylex();
-	extern int yylex_destroy();
-	extern int yywrap();
-	void yyerror(const char *);
-	extern FILE *yyin;
+typedef struct Node {
+    char *key; // Variable
+    struct Node *next; // Next node
+} Node;
 
-	// Define the symbol table as a global variable
-	unordered_set<string> symbol_table;
+Node *table[TABLE_SIZE]; // Hash table array
 
-	// Helper function to check if a variable is declared
-	void check_declaration(string var_name) {
-		if (symbol_table.find(var_name) == symbol_table.end()) {
-			fprintf(stderr, "Error: variable %s is used before declaration\n", var_name.c_str());
-			exit(1);
-		}
-	}
+// Hash function: returns a hash value for the given key (variable name)
+unsigned int hashfunc(char *key) {
+    unsigned int hashval = 0;
+    for (int i = 0; key[i] != '\0'; i++) {
+        hashval = key[i] + 31 * hashval;
+    }
+    return hashval % TABLE_SIZE;
+}
 
-	// Function to perform semantic analysis
-	void perform_semantic_analysis(astNode* root) {
-		// Traverse the AST and populate the symbol table
-		for (auto child : root->children) {
-			if (child->type == var_node) {
-				symbol_table.insert(child->var.name);
-			} else if (child->type == func_node) {
-				symbol_table.insert(child->func.name);
-			}
-		}
+// Lookup function: returns 1 if the given key (variable name) is found in the hash table, 0 otherwise
+int lookup(char *key) {
+    unsigned int hashval = hashfunc(key);
+    Node *p = table[hashval];
+    while (p != NULL) {
+        if (strcmp(p->key, key) == 0) {
+            return 1;
+        }
+        p = p->next;
+    }
+    return 0;
+}
 
-		// Check if every variable is declared before use
-		for (auto child : root->children) {
-			if (child->type == asgn_node) {
-				check_declaration(child->asgn.lhs->var.name);
-			} else if (child->type == bin_expr_node) {
-				check_declaration(child->bin_expr.lhs->var.name);
-				check_declaration(child->bin_expr.rhs->var.name);
-			} else if (child->type == ret_node) {
-				check_declaration(child->ret.expr->var.name);
-			} else if (child->type == call_node) {
-				if (child->call.param != nullptr) {
-					check_declaration(child->call.param->var.name);
-				}
-			} else if (child->type == decl_node) {
-				if (symbol_table.find(child->decl.name) != symbol_table.end()) {
-					fprintf(stderr, "Error: variable %s is already declared\n", child->decl.name);
-					exit(1);
-				} else {
-					symbol_table.insert(child->decl.name);
-				}
-			}
-		}
-	}
+// Insert function: inserts the given key (variable name) into the hash table
+void insert(char *key) {
+    unsigned int hashval = hashfunc(key);
+    Node *p = table[hashval];
+    while (p != NULL) {
+        if (strcmp(p->key, key) == 0) {
+            // Key already exists in table
+            return;
+        }
+        p = p->next;
+    }
+    // Key not found in table, create a new node and insert it at the beginning of the list
+    Node *new_node = (Node*) malloc(sizeof(Node));
+    new_node->key = key;
+    new_node->next = table[hashval];
+    table[hashval] = new_node;
+}
 %}
 
 /* Union for Token Values */
-%union {
+%union{
 	int val_i;
-	char* val_s;
+	char *val_s;
 	astNode *nptr;
-	vector<astNode *> *svec_ptr;
 }
 
 /* Terminals */
 %token <val_i> NUMBER
 %token <val_s> NAME
-%token READ PRINT IF ELSE WHILE RETURN LT GT LEQ GEQ EQ VOID INTEGER
 
-/* Non-Terminals */
 %type <nptr> expression term
-%type <nptr> declaration_list
 
 %start expression
 
 /* The Mini-C Grammar */
 %%
-declaration_list:
-  declaration_list NAME ';' {symbol_table.insert($2);}
-  | NAME ';' {symbol_table.insert($1);}
-  | expression {
-	$$ = createAsgn(tnptr, $1);
-  }
-  ;
-
 expression:
 	term '+' term {
-		// Check if variables are declared before use
-		check_declaration($1->var.name);
-		check_declaration($3->var.name);
 		$$ = createBExpr($1, $3, add);
 	}
 	| term '-' term {
-		// Check if variables are declared before use
-		check_declaration($1->var.name);
-		check_declaration($3->var.name);
 		$$ = createBExpr($1, $3, sub);
 	}
 	| term '*' term {
-		// Check if variables are declared before use
-		check_declaration($1->var.name);
-		check_declaration($3->var.name);
 		$$ = createBExpr($1, $3, mul);
 	}
 	| term '/' term {
-		// Check if variables are declared before use
-		check_declaration($1->var.name);
-		check_declaration($3->var.name);
 		$$ = createBExpr($1, $3, divide);
 	}
-
 	| term {
-		// Check if variable is declared before use
-		check_declaration($1->var.name);
 		$$ = $1;
 	}
 	;
@@ -126,33 +101,44 @@ term:
 		$$ = createCnst($1);
 	}
 	| NAME {
-		// Check if variable is declared before use
-		check_declaration($1);
+		// Push variables to hash table
+		insert($1);
 		$$ = createVar($1);
 	}
 	| '-' term {
 		$$ = createUExpr($2, uminus);
 	}
 	;
-
 %%
 
-int main(int argc, char** argv){
-	if (argc == 2){
-  	yyin = fopen(argv[1], "r");
-	}
-	yyparse();
-	
-	if (yyin != stdin)
-		fclose(yyin);
-	
-	yylex_destroy();
+int main(int argc, char** argv) {
+    if (argc == 2) {
+        yyin = fopen(argv[1], "r");
+    }
 
-	perform_semantic_analysis(root);
-	
+	yyparse();
+
+    if (yyin != stdin) {
+        fclose(yyin);
+    }
+
+    yylex_destroy();
+
+	/* Loop through the hash table and check if each inserted value is declared before use */
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        if (table[i] != NULL) {
+            /* Key found, check if declared before use */
+            if (lookup(table[i]->key)) {
+                printf("%s declared before use\n", table[i]->key);
+            } else {
+                printf("Attempted use before declaration for value %s\n", table[i]->key);
+            }
+        }
+    }
+
 	return 0;
 }
 
-void yyerror(const char *){
-	fprintf(stderr, "Syntax error\n");
+void yyerror(const char *error_msg){
+	fprintf(stdout, "<-\n%s at line %d\n", error_msg, yylineno);
 }
