@@ -167,6 +167,64 @@ void freeSymbolTable(SymbolTable* symbolTable) {
     free(symbolTable);
 }
 
+// Compute liveness range for each value in LLVM IR
+void compute_liveness(LLVMValueRef func) {
+    // Iterate over basic blocks
+    for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb; bb = LLVMGetNextBasicBlock(bb)) {
+        // Initialize live and dead sets for the basic block
+        std::unordered_set<LLVMValueRef> live;
+        std::unordered_set<LLVMValueRef> dead;
+
+        // Iterate over instructions in reverse order
+        for (LLVMValueRef inst = LLVMGetLastInstruction(bb); inst; inst = LLVMGetPreviousInstruction(inst)) {
+            // Add defined values to dead set
+            LLVMValueRef instDef = LLVMGetOperand(inst, 0);
+            if (instDef) {
+                dead.insert(instDef);
+            }
+
+            // Remove defined values from live set
+            LLVMValueRef instUse = LLVMGetOperand(inst, 1);
+            if (instUse) {
+                live.erase(instUse);
+            }
+
+            // Add used values to live set
+            for (unsigned int i = 2; i < LLVMGetNumOperands(inst); i++) {
+                LLVMValueRef operand = LLVMGetOperand(inst, i);
+                live.insert(operand);
+            }
+
+            // Perform register allocation
+            for (LLVMValueRef value : live) {
+                // Check if the value is already assigned a register
+                if (!LLVMGetRegister(value)) {
+                    // Assign a system register to the value
+                    LLVMSetRegister(value, allocate_register());
+                }
+            }
+
+            // Clear live and dead sets
+            live.clear();
+            dead.clear();
+        }
+    }
+}
+
+// Basic-block level register allocation
+LLVMRegister allocate_register() {
+    // Check if there are available registers
+    if (available_registers.empty()) {
+        // Mark the value as spilled if no registers are available
+        return LLVMRegisterSpilled;
+    } else {
+        // Allocate and return a system register
+        LLVMRegister reg = available_registers.top();
+        available_registers.pop();
+        return reg;
+    }
+}
+
 /* Constant propagation and dead code elimination on LLVM IR */
 LLVMModuleRef createLLVMModel(char* filename) {
     char* err = 0;
@@ -378,19 +436,15 @@ program:
         statement end
         | program statement end
 
-end:
-        /* empty */
-        | ';'
-
 statement:
-        expression
-        | assign_stmt
-        | return_stmt
+        expression ';'
+        | assign_stmt ';'
+        | return_stmt ';'
         | if_stmt
         | while_stmt
-        | print_stmt
-        | read_stmt
-        block_stmt
+        | print_stmt ';'
+        | read_stmt ';'
+        | block_stmt
         ;
 
 /* Non-terminal for return statements */
